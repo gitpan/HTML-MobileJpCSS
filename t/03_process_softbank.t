@@ -44,7 +44,6 @@ __DATA__
 <!DOCTYPE html PUBLIC "-//J-PHONE//DTD XHTML Basic 1.0 Plus//EN" "xhtml-basic10-plus.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" lang="ja">
 <head>
-<link rel="stylesheet" href="/css/t.css" />
 <style type="text/css">
 a:link {
 	color: #0000ff;

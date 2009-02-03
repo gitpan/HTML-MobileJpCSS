@@ -6,7 +6,8 @@ use File::Spec;
 use CSS::Tiny;
 use HTTP::MobileAgent;
 
-our $VERSION       = '0.01';
+our $VERSION = '0.02';
+
 our %IstyleDoCoMo = (
     '1' => '-wap-input-format:&quot;*&lt;ja:h&gt;&;',
     '2' => '-wap-input-format:&quot;*&lt;ja:hk&gt;&quot;',
@@ -14,7 +15,7 @@ our %IstyleDoCoMo = (
     '4' => '-wap-input-format:&quot;*&lt;ja:n&gt;&quot;',
 );
 
-my $StyleMap = {
+our $StyleMap = {
     'hr' => {
         'text-align' => {
             'I' => 'float', 'S' => 'float',
@@ -54,34 +55,46 @@ sub new {
 sub apply {
     my ($self, $content) = @_;
     return $content if $self->{agent}->is_non_mobile;
-    return $content if $self->{agent}->is_ezweb && !$self->{inliner_ezweb};
-    
+    return $content if $self->{agent}->is_ezweb && !(map { $self->{$_} } qw/inliner_ezweb css_file css/);
+
+    $content =~ s/(?:\r\n|\n)/\n/g;
+
     my @css;
-    my @link = $content =~ /<link\s.*?rel="stylesheet".*?>/ig;
+    my @link = $content =~ /<link\s.*?rel="stylesheet".*?>/isg;
     for (@link) {
         if (/href="(.+?)"/) {
             my $css = $self->_read_href($1);
             push @css, $css; 
         }
     }
+    $content =~ s/<link\s.*?rel="stylesheet".*?>\s*//isg if @link;
+
     push @css, $self->_read($self->{css_file}) if $self->{css_file};
+    push @css, bless $self->{css}, 'CSS::Tiny' if $self->{css};
 
     my $style = {};
     for my $css (@css) {
         for (keys %$css) {
             if (/^a:(?:link|focus|visited)$/) {
-                $style->{pseudo}->{$_} = $css->{$_};
+                $style->{pseudo}->{$_} = $style->{pseudo}->{$_}
+                    ? { %{$style->{pseudo}->{$_}}, %{$css->{$_}} }
+                    : $css->{$_};
             }
             elsif (/^(\#(.+))/) {
-                $style->{id}->{$2}    = $css->{$1};
+                $style->{id}->{$2} = $style->{id}->{$2}
+                    ? { %{$style->{id}->{$2}}, %{$css->{$1}} }
+                    : $css->{$1};
             }
             elsif (/^(\.(.+))/) {
-                $style->{class}->{$2} = $css->{$1};
+                $style->{class}->{$2} = $style->{class}->{$2}
+                    ? { %{$style->{class}->{$2}}, %{$css->{$1}} }
+                    : $css->{$1};
             }
             else {
-                $style->{tag}->{$_}   = $css->{$_};
+                $style->{tag}->{$_} = $style->{tag}->{$_}
+                    ? { %{$style->{tag}->{$_}}, %{$css->{$_}} }
+                    : $css->{$_};
             }
-
         }
     }
 
@@ -89,13 +102,13 @@ sub apply {
     if ($style->{pseudo}) {
         my $css = bless $style->{pseudo}, 'CSS::Tiny';
         my $pseudo = $self->{agent}->is_docomo ? "<![CDATA[\n".$css->write_string."]]>" : $css->write_string;
-        $content =~ s{<head>(.*)</head>}{<head>$1<style type="text/css">\n$pseudo</style></head>}ims;
+        $content =~ s{<head>(.*)</head>}{<head>$1<style type="text/css">\n$pseudo</style></head>}is;
     }
 
     # tag
     for my $tag (keys %{$style->{tag}}) {
         my $props = $style->{tag}->{$tag};
-        my @node = $content =~ /<$tag[^<>]*?>/ig;
+        my @node = $content =~ /<$tag[^<>]*?>/isg;
         for my $node (@node) {
             $content = $self->_replace_style($content, $node, $props);
         }
@@ -104,7 +117,7 @@ sub apply {
     # id
     for my $id (keys %{$style->{id}}) {
         my $props = $style->{id}->{$id};
-        my @node = $content =~ /<[^<>]+?id="$id"[^<>]*?>/ig;
+        my @node = $content =~ /<[^<>]+?id="$id"[^<>]*?>/isg;
         for my $node (@node) {
             $content = $self->_replace_style($content, $node, $props);            
         }
@@ -113,17 +126,17 @@ sub apply {
     # class
     for my $class (keys %{$style->{class}}) {
         my $props = $style->{class}->{$class};
-        my @node = $content =~ /<[^<>]+?\sclass="$class"[^<>]*?>/ig;
+        my @node = $content =~ /<[^<>]+?\sclass="$class"[^<>]*?>/isg;
         for my $node (@node) {
             $content = $self->_replace_style($content, $node, $props);
         }
-        $content =~ s/<([^<>]+?)\sclass="$class"([^<>]*?)>/<$1$2>/ig;
+        $content =~ s/<([^<>]+?)\sclass="$class"([^<>]*?)>/<$1$2>/isg;
     }
 
     # istyle for DoCoMo
     if ($self->{agent}->is_docomo) {
-        $content =~ s/(<input[^>]*?)(istyle="(\d)")([^>]*?>)/$1style="$IstyleDoCoMo{$3}"$4/ig;
-        $content =~ s/(<textarea[^>]*?)(istyle="(\d)")([^>]*?>)/$1style="$IstyleDoCoMo{$3}"$4/ig;
+        $content =~ s/(<input[^>]*?)(istyle="(\d)")([^>]*?>)/$1style="$IstyleDoCoMo{$3}"$4/isg;
+        $content =~ s/(<textarea[^>]*?)(istyle="(\d)")([^>]*?>)/$1style="$IstyleDoCoMo{$3}"$4/isg;
     }
     return $content;
 }
@@ -184,19 +197,20 @@ sub _fetch {
 
 sub _replace_style {
     my ($self, $content, $node, $props) = @_;
-    my ($tag) = $node =~ /^<([^\s]+).*?>/;
+    my ($tag) = $node =~ /^<([^\s]+).*?>/is;
     my $replace = $node;
     my $style;
     for (keys %$props) {
         $style .= $self->_filter($tag, $_, $props->{$_});
     }
     if ($node =~ /style=".+?"/) {
-        $replace =~ s/(style=".+?)"/$1$style"/i;
+        $replace =~ s/(style=".+?)"/$1$style"/is;
     }
     else {
-        $replace =~ s/<$tag/<$tag style="$style"/;
+        $replace =~ s/<$tag/<$tag style="$style"/is;
     }
-    $content =~ s/$node/$replace/i;
+    $replace =~ s/[\n\s]+/ /g;
+    $content =~ s/$node/$replace/is;
     return $content;
 }
 
@@ -233,7 +247,8 @@ HTML::MobileJpCSS - css inliner and converter
   my $inliner = HTML::MobileJpCSS->new(base_dir => '/path/to/documentroot/');
   $inliner->apply(<<'...');
   <?xml version="1.0" encoding="Shift_JIS"?>
-  <!DOCTYPE html PUBLIC "-//i-mode group (ja)//DTD XHTML i-XHTML(Locale/Ver.=ja/2.1) 1.0//EN" "i-xhtml_4ja_10.dtd">
+  <!DOCTYPE html PUBLIC "-//i-mode group (ja)//DTD XHTML i-XHTML(Locale/Ver.=ja/2.1) 1.0//EN"
+      "i-xhtml_4ja_10.dtd">
   <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" lang="ja">
   <head>
     <link rel="stylesheet" href="/css/foo.css" />
@@ -251,10 +266,10 @@ HTML::MobileJpCSS - css inliner and converter
 
   # result
   <?xml version="1.0" encoding="Shift_JIS"?>
-  <!DOCTYPE html PUBLIC "-//i-mode group (ja)//DTD XHTML i-XHTML(Locale/Ver.=ja/2.1) 1.0//EN" "i-xhtml_4ja_10.dtd">
+  <!DOCTYPE html PUBLIC "-//i-mode group (ja)//DTD XHTML i-XHTML(Locale/Ver.=ja/2.1) 1.0//EN"
+      "i-xhtml_4ja_10.dtd">
   <html>
   <head>
-    <link rel="stylesheet" href="/css/foo.css" />
   </head>
   <body>
     <div class="title" style="color:red;">bar</div>
@@ -263,17 +278,17 @@ HTML::MobileJpCSS - css inliner and converter
 
 =head1 DESCRIPTION
 
-  HTML::MobileJpCSS is css inliner.
+HTML::MobileJpCSS is css inliner.
 
-  this module is possible the specification of a style based EZweb in each career(DoCoMo,EZweb,Softbank[,Willcom])
+this module is possible the specification of a style based EZweb in each career(DoCoMo,EZweb,Softbank[,Willcom])
 
 =head1 METHODS
 
 =over 4
 
-=item new
+=item new(%option)
     
-  constructor of HTML::MobileJpCSS->new();
+constructor of HTML::MobileJpCSS->new();
 
 =over 5
 
@@ -294,20 +309,16 @@ concatenate local css file specified with '<link rel="stylesheet" href="/css/foo
 =item css_file
 
 read css file (default: I<none>)
+force inline css when user_agent is EZweb
 
   my $inliner = HTML::DoCoMoCSS->new(css_file => '/path/to/css/foo.css');
 
-=item style_map
+=item css
 
-you can specify each career style with \%hash 
-L<"EXAMPLES">
-  my $inliner = HTML::DoCoMoCSS->new(style => {
-    hr => {
-      text-align => {
-        I => 'float',
-      },
-    },
-  });
+read css (default: I<none>)
+force inline css when user_agent is EZweb
+
+  my $inliner = HTML::DoCoMoCSS->new(css => {'.color-red' => { color => 'blue' });
 
 =back
 

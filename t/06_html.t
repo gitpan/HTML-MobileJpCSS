@@ -27,16 +27,16 @@ __DATA__
 <!DOCTYPE html PUBLIC "-//i-mode group (ja)//DTD XHTML i-XHTML(Locale/Ver.=ja/2.1) 1.0//EN" "i-xhtml_4ja_10.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja" lang="ja">
 <head>
-<link rel="stylesheet" href="/css/t.css" />
+<link 
+    rel="stylesheet" href="/css/t.css" />
 </head>
 <body>
-<div class="title">foo</div>
-<div class="color-red" style="text-align:right;">bar</div>
-<hr class="line" />
-<img class="logo" src="" />
-<span class="font-small">buzz</span>
-<input istyle="1" type="text" />
-<textarea istyle="2"></textarea>
+<hr
+ class="line" />
+<img
+class="logo" src="" />
+<span class="font-small">
+buzz</span>
 </body>
 </html>
 --- expected
@@ -51,12 +51,9 @@ a:link {
 }
 ]]></style></head>
 <body style="background-color:#ffffff;">
-<div style="text-align:center;font-size:xx-large;">foo</div>
-<div style="text-align:right;color:red;">bar</div>
 <hr style="float:center;border-color:#ff99ff;" />
 <img style="float:none;" src="" />
-<span style="font-size:xx-small;">buzz</span>
-<input style="-wap-input-format:&quot;*&lt;ja:h&gt;&;" type="text" />
-<textarea style="-wap-input-format:&quot;*&lt;ja:hk&gt;&quot;"></textarea>
+<span style="font-size:xx-small;">
+buzz</span>
 </body>
 </html>

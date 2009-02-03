@@ -25,4 +25,6 @@ t/01_process_docomo.t
 t/02_process_ezweb.t
 t/03_process_softbank.t
 t/04_internal.t
+t/05_multiple.t
+t/06_html.t
 t/css/t.css
